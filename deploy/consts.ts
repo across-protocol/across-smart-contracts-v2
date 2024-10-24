@@ -48,6 +48,9 @@ export const L1_ADDRESS_MAP: { [key: number]: { [contractName: string]: string }
     zoraStandardBridge: "0x3e2Ea9B92B7E48A52296fD261dc26fd995284631",
     worldChainCrossDomainMessenger: "0xf931a81D18B1766d15695ffc7c1920a62b7e710a",
     worldChainStandardBridge: "0x470458C91978D2d929704489Ad730DC3E3001113",
+    l1AlephZeroInbox: "0x56D8EC76a421063e1907503aDd3794c395256AEb",
+    l1AlephZeroERC20GatewayRouter: "0xeBb17f398ed30d02F2e8733e7c1e5cf566e17812",
+    donationBox: "0x9ac1d182c42E27dde39aC354C61dD54a3F034e17",
   },
   [CHAIN_IDs.SEPOLIA]: {
     optimismCrossDomainMessenger: "0x58Cc85b8D04EA49cC6DBd3CbFFd00B4B8D6cb3ef",
