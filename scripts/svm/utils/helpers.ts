@@ -14,6 +14,10 @@ export const formatUsdc = (amount: BigNumber): string => {
   return ethers.utils.formatUnits(amount, 6);
 };
 
+export const parseUsdc = (amount: string): BigNumber => {
+  return ethers.utils.parseUnits(amount, 6);
+};
+
 export function constructEmptyPoolRebalanceTree(chainId: BigNumber, groupIndex: number) {
   const poolRebalanceLeaf = {
     chainId,
