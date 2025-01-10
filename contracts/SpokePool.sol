@@ -61,7 +61,7 @@ abstract contract SpokePool is
     uint32 private DEPRECATED_depositQuoteTimeBuffer;
 
     // `numberOfDeposits` acts as a counter to generate unique deposit identifiers for this spoke pool.
-    // It is a uint32 that increments with each `depositV3` call. In the `V3FundsDeposited` event, it is
+    // It is a uint32 that increments with each `depositV3` call. In the `FundsDeposited` event, it is
     // implicitly cast to uint256 by setting its most significant bits to 0, reducing the risk of ID collisions
     // with unsafe deposits. However, this variable's name could be improved (e.g., `depositNonceCounter`)
     // since it does not accurately reflect the total number of deposits, as `unsafeDepositV3` can bypass this increment.
@@ -368,6 +368,8 @@ abstract contract SpokePool is
      **************************************/
 
     /**
+     * @dev DEPRECATION NOTICE: this function is deprecated and will be removed in the future.
+     *      Please use deposit (under DEPOSITOR FUNCTIONS below) or depositV3 instead.
      * @notice Called by user to bridge funds from origin to destination chain. Depositor will effectively lock
      * tokens in this contract and receive a destination token on the destination chain. The origin => destination
      * token mapping is stored on the L1 HubPool.
@@ -375,7 +377,7 @@ abstract contract SpokePool is
      * @notice The originToken => destinationChainId must be enabled.
      * @notice This method is payable because the caller is able to deposit native token if the originToken is
      * wrappedNativeToken and this function will handle wrapping the native token to wrappedNativeToken.
-     * @dev Produces a V3FundsDeposited event with an infinite expiry, meaning that this deposit can never expire.
+     * @dev Produces a FundsDeposited event with an infinite expiry, meaning that this deposit can never expire.
      * Moreover, the event's outputToken is set to 0x0 meaning that this deposit can always be slow filled.
      * @param recipient Address to receive funds at on destination chain.
      * @param originToken Token to lock into this contract to initiate deposit.
@@ -387,7 +389,7 @@ abstract contract SpokePool is
      * @param message Arbitrary data that can be used to pass additional information to the recipient along with the tokens.
      * Note: this is intended to be used to pass along instructions for how a contract should use or allocate the tokens.
      */
-    function deposit(
+    function depositDeprecated_5947912356(
         address recipient,
         address originToken,
         uint256 amount,
@@ -396,7 +398,7 @@ abstract contract SpokePool is
         uint32 quoteTimestamp,
         bytes memory message,
         uint256 // maxCount. Deprecated.
-    ) public payable override nonReentrant unpausedDeposits {
+    ) public payable nonReentrant unpausedDeposits {
         _deposit(
             msg.sender,
             recipient,
@@ -410,6 +412,8 @@ abstract contract SpokePool is
     }
 
     /**
+     * @dev DEPRECATION NOTICE: this function is deprecated and will be removed in the future.
+     *      Please use the other deposit or depositV3 instead.
      * @notice The only difference between depositFor and deposit is that the depositor address stored
      * in the relay hash can be overridden by the caller. This means that the passed in depositor
      * can speed up the deposit, which is useful if the deposit is taken from the end user to a middle layer
@@ -504,7 +508,7 @@ abstract contract SpokePool is
      * @param message The message to send to the recipient on the destination chain if the recipient is a contract.
      * If the message is not empty, the recipient contract must implement handleV3AcrossMessage() or the fill will revert.
      */
-    function depositV3(
+    function deposit(
         bytes32 depositor,
         bytes32 recipient,
         bytes32 inputToken,
@@ -538,7 +542,7 @@ abstract contract SpokePool is
     }
 
     /**
-     * @notice An overloaded version of `depositV3` that accepts `address` types for backward compatibility.
+     * @notice A version of `deposit` that accepts `address` types for backward compatibility.
      * This function allows bridging of input tokens cross-chain to a destination chain, receiving a specified amount of output tokens.
      * The relayer is refunded in input tokens on a repayment chain of their choice, minus system fees, after an optimistic challenge
      * window. The exclusivity period is specified as an offset from the current block timestamp.
@@ -596,7 +600,7 @@ abstract contract SpokePool is
         uint32 exclusivityParameter,
         bytes calldata message
     ) public payable override {
-        depositV3(
+        deposit(
             depositor.toBytes32(),
             recipient.toBytes32(),
             inputToken.toBytes32(),
@@ -613,52 +617,13 @@ abstract contract SpokePool is
     }
 
     /**
-     * @notice An overloaded version of `unsafeDepositV3` that accepts `address` types for backward compatibility.
-     * @dev This version mirrors the original `unsafeDepositV3` function, but uses `address` types for `depositor`, `recipient`,
-     * `inputToken`, `outputToken`, and `exclusiveRelayer` for compatibility with contracts using the `address` type.
-     *
-     * The key functionality and logic remain identical, ensuring interoperability across both versions.
-     */
-    function unsafeDepositV3(
-        address depositor,
-        address recipient,
-        address inputToken,
-        address outputToken,
-        uint256 inputAmount,
-        uint256 outputAmount,
-        uint256 destinationChainId,
-        address exclusiveRelayer,
-        uint256 depositNonce,
-        uint32 quoteTimestamp,
-        uint32 fillDeadline,
-        uint32 exclusivityParameter,
-        bytes calldata message
-    ) public payable {
-        unsafeDepositV3(
-            depositor.toBytes32(),
-            recipient.toBytes32(),
-            inputToken.toBytes32(),
-            outputToken.toBytes32(),
-            inputAmount,
-            outputAmount,
-            destinationChainId,
-            exclusiveRelayer.toBytes32(),
-            depositNonce,
-            quoteTimestamp,
-            fillDeadline,
-            exclusivityParameter,
-            message
-        );
-    }
-
-    /**
-     * @notice See depositV3 for details. This function is identical to depositV3 except that it does not use the
+     * @notice See deposit for details. This function is identical to deposit except that it does not use the
      * global deposit ID counter as a deposit nonce, instead allowing the caller to pass in a deposit nonce. This
      * function is designed to be used by anyone who wants to pre-compute their resultant relay data hash, which
      * could be useful for filling a deposit faster and avoiding any risk of a relay hash unexpectedly changing
      * due to another deposit front-running this one and incrementing the global deposit ID counter.
      * @dev This is labeled "unsafe" because there is no guarantee that the depositId emitted in the resultant
-     * V3FundsDeposited event is unique which means that the
+     * FundsDeposited event is unique which means that the
      * corresponding fill might collide with an existing relay hash on the destination chain SpokePool,
      * which would make this deposit unfillable. In this case, the depositor would subsequently receive a refund
      * of `inputAmount` of `inputToken` on the origin chain after the fill deadline.
@@ -683,7 +648,7 @@ abstract contract SpokePool is
      * @param exclusivityParameter See identically named parameter in depositV3() comments.
      * @param message See identically named parameter in depositV3() comments.
      */
-    function unsafeDepositV3(
+    function unsafeDeposit(
         bytes32 depositor,
         bytes32 recipient,
         bytes32 inputToken,
@@ -754,7 +719,7 @@ abstract contract SpokePool is
      * @param message The message to send to the recipient on the destination chain if the recipient is a contract.
      * If the message is not empty, the recipient contract must implement handleV3AcrossMessage() or the fill will revert.
      */
-    function depositV3Now(
+    function depositNow(
         bytes32 depositor,
         bytes32 recipient,
         bytes32 inputToken,
@@ -766,8 +731,8 @@ abstract contract SpokePool is
         uint32 fillDeadlineOffset,
         uint32 exclusivityPeriod,
         bytes calldata message
-    ) external payable {
-        depositV3(
+    ) external payable override {
+        deposit(
             depositor,
             recipient,
             inputToken,
@@ -784,7 +749,7 @@ abstract contract SpokePool is
     }
 
     /**
-     * @notice An overloaded version of `depositV3Now` that supports addresses as input types for backward compatibility.
+     * @notice A version of `depositNow` that supports addresses as input types for backward compatibility.
      * This function submits a deposit and sets `quoteTimestamp` to the current time. The `fill` and `exclusivity` deadlines
      * are set as offsets added to the current time. It is designed to be called by users, including Multisig contracts, who may
      * not have certainty when their transaction will be mined.
@@ -827,7 +792,7 @@ abstract contract SpokePool is
         uint32 fillDeadlineOffset,
         uint32 exclusivityPeriod,
         bytes calldata message
-    ) external payable {
+    ) external payable override {
         depositV3(
             depositor,
             recipient,
@@ -847,7 +812,7 @@ abstract contract SpokePool is
     /**
      * @notice Depositor can use this function to signal to relayer to use updated output amount, recipient,
      * and/or message.
-     * @dev the depositor and depositId must match the params in a V3FundsDeposited event that the depositor
+     * @dev the depositor and depositId must match the params in a FundsDeposited event that the depositor
      * wants to speed up. The relayer has the option but not the obligation to use this updated information
      * when filling the deposit via fillV3RelayWithUpdatedDeposit().
      * @param depositor Depositor that must sign the depositorSignature and was the original depositor.
@@ -862,7 +827,7 @@ abstract contract SpokePool is
      * account. If depositor is a contract, then should implement EIP1271 to sign as a contract. See
      * _verifyUpdateV3DepositMessage() for more details about how this signature should be constructed.
      */
-    function speedUpV3Deposit(
+    function speedUpDeposit(
         bytes32 depositor,
         uint256 depositId,
         uint256 updatedOutputAmount,
@@ -883,7 +848,7 @@ abstract contract SpokePool is
 
         // Assuming the above checks passed, a relayer can take the signature and the updated deposit information
         // from the following event to submit a fill with updated relay data.
-        emit RequestedSpeedUpV3Deposit(
+        emit RequestedSpeedUpDeposit(
             updatedOutputAmount,
             depositId,
             depositor,
@@ -894,12 +859,12 @@ abstract contract SpokePool is
     }
 
     /**
-     * @notice An overloaded version of `speedUpV3Deposit` using `address` types for backward compatibility.
+     * @notice A version of `speedUpDeposit` using `address` types for backward compatibility.
      * This function allows the depositor to signal to the relayer to use updated output amount, recipient, and/or message
      * when filling a deposit. This can be useful when the deposit needs to be modified after the original transaction has
      * been mined.
      *
-     * @dev The `depositor` and `depositId` must match the parameters in a `V3FundsDeposited` event that the depositor wants to speed up.
+     * @dev The `depositor` and `depositId` must match the parameters in a `FundsDeposited` event that the depositor wants to speed up.
      * The relayer is not obligated but has the option to use this updated information when filling the deposit using
      * `fillV3RelayWithUpdatedDeposit()`. This version uses `address` types for compatibility with systems relying on
      * `address`-based implementations.
@@ -937,7 +902,7 @@ abstract contract SpokePool is
 
         // Assuming the above checks passed, a relayer can take the signature and the updated deposit information
         // from the following event to submit a fill with updated relay data.
-        emit RequestedSpeedUpV3Deposit(
+        emit RequestedSpeedUpDeposit(
             updatedOutputAmount,
             depositId,
             depositor.toBytes32(),
@@ -967,7 +932,7 @@ abstract contract SpokePool is
      * origin SpokePool therefore the relayer should not modify any params in relayData.
      * @dev Cannot fill more than once. Partial fills are not supported.
      * @param relayData struct containing all the data needed to identify the deposit to be filled. Should match
-     * all the same-named parameters emitted in the origin chain V3FundsDeposited event.
+     * all the same-named parameters emitted in the origin chain FundsDeposited event.
      * - depositor: The account credited with the deposit who can request to "speed up" this deposit by modifying
      * the output amount, recipient, and message.
      * - recipient The account receiving funds on this chain. Can be an EOA or a contract. If
@@ -995,8 +960,8 @@ abstract contract SpokePool is
      * passed. Will receive inputAmount of the equivalent token to inputToken on the repayment chain.
      * @param repaymentAddress Address the relayer wants to be receive their refund at.
      */
-    function fillV3Relay(
-        V3RelayData calldata relayData,
+    function fillRelay(
+        V3RelayData memory relayData,
         uint256 repaymentChainId,
         bytes32 repaymentAddress
     ) public override nonReentrant unpausedFills {
@@ -1019,6 +984,28 @@ abstract contract SpokePool is
         });
 
         _fillRelayV3(relayExecution, repaymentAddress, false);
+    }
+
+    // Exposes the same function as fillRelay but with a legacy V3RelayData struct that takes in address types. Inner
+    // function fillV3Relay() applies reentrancy & non-paused checks.
+    function fillV3Relay(V3RelayDataLegacy calldata relayData, uint256 repaymentChainId) public override {
+        // Convert V3RelayDataLegacy to V3RelayData using the .toBytes32() method
+        V3RelayData memory convertedRelayData = V3RelayData({
+            depositor: relayData.depositor.toBytes32(),
+            recipient: relayData.recipient.toBytes32(),
+            exclusiveRelayer: relayData.exclusiveRelayer.toBytes32(),
+            inputToken: relayData.inputToken.toBytes32(),
+            outputToken: relayData.outputToken.toBytes32(),
+            inputAmount: relayData.inputAmount,
+            outputAmount: relayData.outputAmount,
+            originChainId: relayData.originChainId,
+            depositId: relayData.depositId,
+            fillDeadline: relayData.fillDeadline,
+            exclusivityDeadline: relayData.exclusivityDeadline,
+            message: relayData.message
+        });
+
+        fillRelay(convertedRelayData, repaymentChainId, msg.sender.toBytes32());
     }
 
     /**
@@ -1110,7 +1097,7 @@ abstract contract SpokePool is
         if (fillStatuses[relayHash] != uint256(FillStatus.Unfilled)) revert InvalidSlowFillRequest();
         fillStatuses[relayHash] = uint256(FillStatus.RequestedSlowFill);
 
-        emit RequestedV3SlowFill(
+        emit RequestedSlowFill(
             relayData.inputToken,
             relayData.outputToken,
             relayData.inputAmount,
@@ -1151,9 +1138,11 @@ abstract contract SpokePool is
 
         // Must do a delegatecall because the function requires the inputs to be calldata.
         (bool success, bytes memory data) = address(this).delegatecall(
-            abi.encodeCall(
-                V3SpokePoolInterface.fillV3Relay,
-                (relayData, destinationFillerData.repaymentChainId, msg.sender.toBytes32())
+            abi.encode(
+                "fillRelay((bytes32,bytes32,bytes32,bytes32,bytes32,uint256,uint256,uint256,uint256,uint32,uint32,bytes),uint256,bytes32)",
+                relayData,
+                destinationFillerData.repaymentChainId,
+                msg.sender.toBytes32()
             )
         );
         if (!success) {
@@ -1387,7 +1376,7 @@ abstract contract SpokePool is
             );
         }
 
-        emit V3FundsDeposited(
+        emit FundsDeposited(
             params.inputToken,
             params.outputToken,
             params.inputAmount,
@@ -1445,7 +1434,7 @@ abstract contract SpokePool is
             IERC20Upgradeable(originToken).safeTransferFrom(msg.sender, address(this), amount);
         }
 
-        emit V3FundsDeposited(
+        emit FundsDeposited(
             originToken.toBytes32(), // inputToken
             bytes32(0), // outputToken. Setting this to 0x0 means that the outputToken should be assumed to be the
             // canonical token for the destination chain matching the inputToken. Therefore, this deposit
@@ -1687,7 +1676,7 @@ abstract contract SpokePool is
         // If a slow fill for this fill was requested then the relayFills value for this hash will be
         // FillStatus.RequestedSlowFill. Therefore, if this is the status, then this fast fill
         // will be replacing the slow fill. If this is a slow fill execution, then the following variable
-        // is trivially true. We'll emit this value in the FilledV3Relay
+        // is trivially true. We'll emit this value in the FilledRelay
         // event to assist the Dataworker in knowing when to return funds back to the HubPool that can no longer
         // be used for a slow fill execution.
         FillType fillType = isSlowFill
@@ -1701,7 +1690,7 @@ abstract contract SpokePool is
         // @dev This function doesn't support partial fills. Therefore, we associate the relay hash with
         // an enum tracking its fill status. All filled relays, whether slow or fast fills, are set to the Filled
         // status. However, we also use this slot to track whether this fill had a slow fill requested. Therefore
-        // we can include a bool in the FilledV3Relay event making it easy for the dataworker to compute if this
+        // we can include a bool in the FilledRelay event making it easy for the dataworker to compute if this
         // fill was a fast fill that replaced a slow fill and therefore this SpokePool has excess funds that it
         // needs to send back to the HubPool.
         if (fillStatuses[relayHash] == uint256(FillStatus.Filled)) revert RelayFilled();
@@ -1709,7 +1698,7 @@ abstract contract SpokePool is
 
         // @dev Before returning early, emit events to assist the dataworker in being able to know which fills were
         // successful.
-        emit FilledV3Relay(
+        emit FilledRelay(
             relayData.inputToken,
             relayData.outputToken,
             relayData.inputAmount,
