@@ -19,8 +19,8 @@ task("testChainAdapter", "Verify a chain adapter")
   .addParam("amount", "Amount to bridge to the destination chain")
   .setAction(async function (args, hre: HardhatRuntimeEnvironment) {
     const { deployments, ethers, getChainId, network } = hre;
-    const provider = new ethers.providers.StaticJsonRpcProvider(network.config.url);
-    const signer = new ethers.Wallet.fromMnemonic(getMnemonic()).connect(provider);
+    const provider = new ethers.providers.StaticJsonRpcProvider((network.config as any).url);
+    const signer = ethers.Wallet.fromMnemonic(getMnemonic()).connect(provider);
 
     const hubChainId = await getChainId();
     const spokeChainId = parseInt(args.chain);
