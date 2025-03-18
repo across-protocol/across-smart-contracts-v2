@@ -77,7 +77,7 @@ abstract contract SpokePool is
     RootBundle[] public rootBundles;
 
     // Origin token to destination token routings can be turned on or off, which can enable or disable deposits.
-    mapping(address => mapping(uint256 => bool)) public enabledDepositRoutes;
+    mapping(address => mapping(uint256 => bool)) public DEPRECATED_enabledDepositRoutes;
 
     // Each relay is associated with the hash of parameters that uniquely identify the original deposit and a relay
     // attempt for that deposit. The relay itself is just represented as the amount filled so far. The total amount to
@@ -169,6 +169,11 @@ abstract contract SpokePool is
     // One year in seconds. If `exclusivityParameter` is set to a value less than this, then the emitted
     // exclusivityDeadline in a deposit event will be set to the current time plus this value.
     uint32 public constant MAX_EXCLUSIVITY_PERIOD_SECONDS = 31_536_000;
+
+    // This is a conservative limit equal to ~3x the average gas cost of a transfer() call on an ERC20 token.
+    // This value is used as a cap to protect refund leaf executors from executing any refund leaf that calls
+    // transfer() on a token that attempts to grief the executor by charging them a lot of gas.
+    uint256 public constant MAX_ERC20_TRANSFER_GAS_COST = 300_000;
     /****************************************
      *                EVENTS                *
      ****************************************/
@@ -323,21 +328,6 @@ abstract contract SpokePool is
      */
     function setWithdrawalRecipient(address newWithdrawalRecipient) public override onlyAdmin nonReentrant {
         _setWithdrawalRecipient(newWithdrawalRecipient);
-    }
-
-    /**
-     * @notice Enable/Disable an origin token => destination chain ID route for deposits. Callable by admin only.
-     * @param originToken Token that depositor can deposit to this contract.
-     * @param destinationChainId Chain ID for where depositor wants to receive funds.
-     * @param enabled True to enable deposits, False otherwise.
-     */
-    function setEnableRoute(
-        address originToken,
-        uint256 destinationChainId,
-        bool enabled
-    ) public override onlyAdmin nonReentrant {
-        enabledDepositRoutes[originToken][destinationChainId] = enabled;
-        emit EnabledDepositRoute(originToken, destinationChainId, enabled);
     }
 
     /**
@@ -646,10 +636,6 @@ abstract contract SpokePool is
      * corresponding fill might collide with an existing relay hash on the destination chain SpokePool,
      * which would make this deposit unfillable. In this case, the depositor would subsequently receive a refund
      * of `inputAmount` of `inputToken` on the origin chain after the fill deadline.
-     * @dev On the destination chain, the hash of the deposit data will be used to uniquely identify this deposit, so
-     * modifying any params in it will result in a different hash and a different deposit. The hash will comprise
-     * all parameters to this function along with this chain's chainId(). Relayers are only refunded for filling
-     * deposits with deposit hashes that map exactly to the one emitted by this contract.
      * @param depositNonce The nonce that uniquely identifies this deposit. This function will combine this parameter
      * with the msg.sender address to create a unique uint256 depositNonce and ensure that the msg.sender cannot
      * use this function to front-run another depositor's unsafe deposit. This function guarantees that the resultant
@@ -1330,10 +1316,6 @@ abstract contract SpokePool is
         // Verify depositor is a valid EVM address.
         params.depositor.checkAddress();
 
-        // Check that deposit route is enabled for the input token. There are no checks required for the output token
-        // which is pulled from the relayer at fill time and passed through this contract atomically to the recipient.
-        if (!enabledDepositRoutes[params.inputToken.toAddress()][params.destinationChainId]) revert DisabledRoute();
-
         // Require that quoteTimestamp has a maximum age so that depositors pay an LP fee based on recent HubPool usage.
         // It is assumed that cross-chain timestamps are normally loosely in-sync, but clock drift can occur. If the
         // SpokePool time stalls or lags significantly, it is still possible to make deposits by setting quoteTimestamp
@@ -1419,9 +1401,6 @@ abstract contract SpokePool is
         uint32 quoteTimestamp,
         bytes memory message
     ) internal {
-        // Check that deposit route is enabled.
-        if (!enabledDepositRoutes[originToken][destinationChainId]) revert DisabledRoute();
-
         // We limit the relay fees to prevent the user spending all their funds on fees.
         if (SignedMath.abs(relayerFeePct) >= 0.5e18) revert InvalidRelayerFeePct();
         if (amount > MAX_TRANSFER_SIZE) revert MaxTransferSizeExceeded();
@@ -1538,7 +1517,7 @@ abstract contract SpokePool is
         uint256 returnValue;
         bytes memory data = abi.encodeCall(IERC20Upgradeable.transfer, (to, amount));
         assembly {
-            success := call(gas(), token, 0, add(data, 0x20), mload(data), 0, 0x20)
+            success := call(MAX_ERC20_TRANSFER_GAS_COST, token, 0, add(data, 0x20), mload(data), 0, 0x20)
             returnSize := returndatasize()
             returnValue := mload(0)
         }
